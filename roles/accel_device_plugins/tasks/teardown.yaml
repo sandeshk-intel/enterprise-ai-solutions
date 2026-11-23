@@ -1,0 +1,46 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Removes the plugins and their node labels whatever the lists now say; the kubelet drops the resources once
+# the sockets are gone. QAT VFs and IAA work queues the init containers configured stay until a reboot.
+
+- name: "accel_device_plugins | teardown"
+  environment:
+    KUBECONFIG: "{{ kubernetes_kubeconfig }}"
+  block:
+    - name: "accel_device_plugins | teardown | Delete the namespace"
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ accel_device_plugins_namespace }}"
+        state: absent
+        wait: true
+
+    - name: "accel_device_plugins | teardown | Read the nodes"
+      kubernetes.core.k8s_info:
+        kind: Node
+      register: _accel_all_nodes
+
+    - name: "accel_device_plugins | teardown | Remove the plugin labels"
+      kubernetes.core.k8s:
+        state: patched
+        kind: Node
+        name: "{{ item.metadata.name }}"
+        definition: "{{ {'metadata': {'labels': dict(_accel_keys | zip_longest([], fillvalue=None))}} }}"
+      loop: "{{ _accel_all_nodes.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      vars:
+        _accel_keys: >-
+          {{ item.metadata.labels | default({}) | dict2items | selectattr('key', 'match', 'accel-device-plugins/')
+             | map(attribute='key') | list }}
+      when: _accel_keys | length > 0
+
+    - name: "accel_device_plugins | teardown | Stop loading vfio-pci at boot"
+      ansible.builtin.file:
+        path: /etc/modules-load.d/vfio-pci.conf
+        state: absent
+      become: true
+      delegate_to: "{{ item }}"
+      loop: "{{ accel_device_plugins_nodes.qat | default([]) | intersect(groups['all']) }}"

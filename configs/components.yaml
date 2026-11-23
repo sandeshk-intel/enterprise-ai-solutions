@@ -140,6 +140,14 @@ components:
     enabled: "{{ intel_gpu_plugin_enabled | default(true) | bool and cluster_distribution | default('kubernetes') != 'openshift' }}"
     depends_on: [node_feature_discovery]
 
+  # Device plugins for RDMA NICs and Intel QAT / IAA, each on the nodes listed for it in
+  # accel_device_plugins_nodes: opt-in, off while every list is empty. A remote KV-cache pool
+  # (inference: vllm-cuda-kvshrink) needs them. Not on OpenShift: its operators provide them.
+  - name: accel_device_plugins
+    layer: platform
+    enabled: "{{ (accel_device_plugins_nodes | default({})).values() | select | list | length > 0 and cluster_distribution | default('kubernetes') != 'openshift' }}"
+    depends_on: []
+
   - name: cert_manager
     layer: platform
     enabled: "{{ cert_manager_enabled | default(true) | bool }}"

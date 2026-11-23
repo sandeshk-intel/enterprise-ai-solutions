@@ -1,0 +1,57 @@
+# Vendored from Mellanox/k8s-rdma-shared-dev-plugin v1.5.4 (deployment/k8s/base/daemonset.yaml, Apache-2.0).
+# Differences from upstream: the accel-device-plugins namespace, and only nodes labelled
+# accel-device-plugins/rdma=true. Its rdma-devices ConfigMap is rendered by the role from
+# accel_device_plugins_rdma_selectors. Advertises rdma/hca: shared /dev/infiniband access, so pods use
+# RDMA NICs without being privileged.
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: rdma-shared-dp-ds
+  namespace: accel-device-plugins
+spec:
+  selector:
+    matchLabels:
+      name: rdma-shared-dp-ds
+  template:
+    metadata:
+      labels:
+        name: rdma-shared-dp-ds
+    spec:
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      nodeSelector:
+        accel-device-plugins/rdma: "true"
+      containers:
+      - image: ghcr.io/mellanox/k8s-rdma-shared-dev-plugin:v1.5.4
+        name: k8s-rdma-shared-dp-ds
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - name: device-plugin
+            mountPath: /var/lib/kubelet/device-plugins
+            readOnly: false
+          - name: plugins-registry
+            mountPath: /var/lib/kubelet/plugins_registry
+            readOnly: false
+          - name: config
+            mountPath: /k8s-rdma-shared-dev-plugin
+          - name: devs
+            mountPath: /dev/
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: plugins-registry
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+        - name: config
+          configMap:
+            name: rdma-devices
+            items:
+            - key: config.json
+              path: config.json
+        - name: devs
+          hostPath:
+            path: /dev/

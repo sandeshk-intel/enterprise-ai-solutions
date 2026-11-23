@@ -1,0 +1,23 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+- name: "accel_device_plugins | validate"
+  environment:
+    KUBECONFIG: "{{ kubernetes_kubeconfig }}"
+  block:
+    - name: "accel_device_plugins | validate | Check each plugin on its nodes"
+      ansible.builtin.include_tasks: check.yaml
+      loop: "{{ accel_device_plugins | dict2items | selectattr('key', 'in', _accel_listed) | list }}"
+      loop_control:
+        loop_var: _accel_plugin
+        label: "{{ _accel_plugin.key }}"
+      vars:
+        _accel_listed: "{{ accel_device_plugins_nodes | dict2items | selectattr('value') | map(attribute='key') | list }}"
+        _accel_nodes: "{{ accel_device_plugins_nodes[_accel_plugin.key] }}"
+
+    - name: "accel_device_plugins | validate | PASS"
+      ansible.builtin.debug:
+        msg: >-
+          {% for name, nodes in accel_device_plugins_nodes.items() if nodes %}{{ accel_device_plugins[name].resource }}
+          on {{ nodes | join(', ') }}{{ '; ' if not loop.last }}{% endfor %}

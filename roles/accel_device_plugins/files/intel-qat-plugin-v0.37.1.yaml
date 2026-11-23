@@ -1,0 +1,123 @@
+# Vendored from intel/intel-device-plugins-for-kubernetes v0.37.1 (deployments/qat_plugin, with the
+# qat_initcontainer overlay, rendered; Apache-2.0). Differences from upstream: the accel-device-plugins
+# namespace, only nodes labelled accel-device-plugins/qat=true, and ServicesEnabled=dc: the init container
+# gives every QAT PF to compression (crypto services are dropped) and binds all its VFs to vfio-pci.
+# Advertised as qat.intel.com/dc, spread over the PFs (-allocation-policy balanced).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qat-config
+  namespace: accel-device-plugins
+data:
+  qat.conf: |
+    ServicesEnabled=dc
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: intel-qat-plugin
+  name: intel-qat-plugin
+  namespace: accel-device-plugins
+spec:
+  selector:
+    matchLabels:
+      app: intel-qat-plugin
+  template:
+    metadata:
+      labels:
+        app: intel-qat-plugin
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        accel-device-plugins/qat: "true"
+      initContainers:
+      - name: intel-qat-initcontainer
+        image: intel/intel-qat-initcontainer:0.37.1
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          privileged: true
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /sys
+          name: sysfs
+        - mountPath: /qat-init/conf
+          name: qat-config
+      containers:
+      - name: intel-qat-plugin
+        image: intel/intel-qat-plugin:0.37.1
+        imagePullPolicy: IfNotPresent
+        args:
+        - -dpdk-driver
+        - vfio-pci
+        - -kernel-vf-drivers
+        - 4xxxvf,420xxvf
+        - -max-num-devices
+        - "128"
+        - -allocation-policy
+        - balanced
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          limits:
+            cpu: 140m
+            memory: 50Mi
+          requests:
+            cpu: 70m
+            memory: 15Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          seLinuxOptions:
+            type: container_device_plugin_t
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /dev/vfio
+          name: devdir
+          readOnly: true
+        - mountPath: /sys/kernel/debug
+          name: debugfsdir
+          readOnly: true
+        - mountPath: /sys/bus/pci
+          name: pcidir
+        - mountPath: /var/lib/kubelet/device-plugins
+          name: kubeletsockets
+      volumes:
+      - hostPath:
+          path: /sys
+        name: sysfs
+      - configMap:
+          defaultMode: 288
+          name: qat-config
+          optional: true
+        name: qat-config
+      - hostPath:
+          path: /dev/vfio
+        name: devdir
+      - hostPath:
+          path: /sys/kernel/debug
+        name: debugfsdir
+      - hostPath:
+          path: /sys/bus/pci
+        name: pcidir
+      - hostPath:
+          path: /var/lib/kubelet/device-plugins
+        name: kubeletsockets
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate

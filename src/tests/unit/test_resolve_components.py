@@ -149,3 +149,22 @@ def test_intel_gpu_plugin_enable_rule(variables, enabled):
     env.filters["bool"] = lambda v: str(v).lower() in ("1", "true", "yes", "on")
     rendered = env.from_string(_component("intel_gpu_plugin")["enabled"]).render(**variables)
     assert (rendered == "True") is enabled
+
+
+def test_accel_device_plugins_is_a_platform_component_after_the_gpu_plugins():
+    assert _component("accel_device_plugins")["layer"] == "platform"
+    order = resolve_registry("platform", "install")
+    assert order.index("intel_gpu_plugin") < order.index("accel_device_plugins")
+    assert "accel_device_plugins" not in resolve_registry("inference", "teardown")
+
+
+@pytest.mark.parametrize("variables, enabled", [
+    ({}, False),
+    ({"accel_device_plugins_nodes": {"rdma": [], "qat": [], "iaa": []}}, False),
+    ({"accel_device_plugins_nodes": {"rdma": ["gpu-node-1", "pool-node-1"]}}, True),
+    ({"accel_device_plugins_nodes": {"qat": ["pool-node-1"]}, "cluster_distribution": "openshift"}, False),
+])
+def test_accel_device_plugins_enable_rule(variables, enabled):
+    import jinja2
+    rendered = jinja2.Environment().from_string(_component("accel_device_plugins")["enabled"]).render(**variables)
+    assert (rendered == "True") is enabled

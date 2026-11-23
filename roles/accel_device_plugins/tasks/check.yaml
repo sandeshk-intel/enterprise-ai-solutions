@@ -1,0 +1,31 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# One plugin rolled out to its nodes, each advertising its resource. Install retries; validate checks once.
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Wait for the DaemonSet to roll out"
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: "{{ _accel_plugin.value.daemonset }}"
+    namespace: "{{ accel_device_plugins_namespace }}"
+  register: _accel_ds
+  until:
+    - _accel_ds.resources | default([]) | length > 0
+    - (_accel_ds.resources[0].status.observedGeneration | default(0) | int) >= (_accel_ds.resources[0].metadata.generation | int)
+    - (_accel_ds.resources[0].status.desiredNumberScheduled | default(0) | int) >= (_accel_nodes | length)
+    - (_accel_ds.resources[0].status.updatedNumberScheduled | default(0) | int) == (_accel_ds.resources[0].status.desiredNumberScheduled | default(0) | int)
+    - (_accel_ds.resources[0].status.numberReady | default(0) | int) == (_accel_ds.resources[0].status.desiredNumberScheduled | default(0) | int)
+  retries: "{{ accel_device_plugins_ready_retries if component_action == 'install' else 0 }}"
+  delay: 10
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Wait for the nodes to advertise {{ _accel_plugin.value.resource }}"
+  kubernetes.core.k8s_info:
+    kind: Node
+    name: "{{ item }}"
+  loop: "{{ _accel_nodes }}"
+  register: _accel_node
+  until: (_accel_node.resources[0].status.allocatable[_accel_plugin.value.resource] | default('0') | int) > 0
+  retries: "{{ accel_device_plugins_ready_retries if component_action == 'install' else 0 }}"
+  delay: 10

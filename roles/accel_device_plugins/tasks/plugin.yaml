@@ -1,0 +1,42 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# One plugin (_accel_plugin, an accel_device_plugins item): label exactly its listed nodes, so the DaemonSet's
+# nodeSelector follows the list, then apply its manifests and wait for it.
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Find the labelled nodes"
+  kubernetes.core.k8s_info:
+    kind: Node
+    label_selectors:
+      - "{{ _accel_label }}=true"
+  register: _accel_labelled
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Unlabel nodes no longer listed"
+  kubernetes.core.k8s:
+    state: patched
+    kind: Node
+    name: "{{ item }}"
+    definition: "{{ {'metadata': {'labels': {_accel_label: None}}} }}"
+  loop: "{{ _accel_labelled.resources | map(attribute='metadata.name') | difference(_accel_nodes) }}"
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Label the listed nodes"
+  kubernetes.core.k8s:
+    state: patched
+    kind: Node
+    name: "{{ item }}"
+    definition: "{{ {'metadata': {'labels': {_accel_label: 'true'}}} }}"
+  loop: "{{ _accel_nodes }}"
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Apply the manifests"
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop: "{{ lookup('ansible.builtin.file', _accel_plugin.value.manifest) | from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
+  when: _accel_nodes | length > 0
+
+- name: "accel_device_plugins | {{ _accel_plugin.key }} | Wait for it"
+  ansible.builtin.include_tasks: check.yaml
+  when: _accel_nodes | length > 0

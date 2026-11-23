@@ -1,0 +1,23 @@
+# The device plugins' namespace. hostPath volumes and privileged init containers are refused by the
+# baseline and restricted levels. The plugins talk to the kubelet over a unix socket only, so the
+# NetworkPolicy allows no traffic (the RDMA plugin runs on the host network, which it does not apply to).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: accel-device-plugins
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+  namespace: accel-device-plugins
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress

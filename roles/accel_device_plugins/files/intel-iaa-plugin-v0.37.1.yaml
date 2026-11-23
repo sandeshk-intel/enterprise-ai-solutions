@@ -1,0 +1,161 @@
+# Vendored from intel/intel-device-plugins-for-kubernetes v0.37.1 (deployments/iaa_plugin, with the
+# iaa_initcontainer overlay, rendered; Apache-2.0). Differences from upstream: the accel-device-plugins
+# namespace, only nodes labelled accel-device-plugins/iaa=true, and IAXL's layout (intel-accel-for-llm
+# tools/setup_iaa.sh): per device, one group with all 8 engines and one shared user work queue of 128 entries.
+# The init container reconfigures every IAA device without active clients, which takes the queues from the
+# kernel's iaa_crypto (zswap). Advertised as iaa.intel.com/wq-user-shared, one per device.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intel-iaa-config
+  namespace: accel-device-plugins
+data:
+  iaa.conf: |
+    [
+      {
+        "dev": "iaxX",
+        "groups": [
+          {
+            "dev": "groupX.0",
+            "grouped_workqueues": [
+              {
+                "dev": "wqX.0",
+                "type": "user",
+                "mode": "shared",
+                "size": 128,
+                "threshold": 128,
+                "group_id": 0,
+                "priority": 10,
+                "block_on_fault": 1,
+                "max_transfer_size": 2147483648,
+                "driver_name": "user",
+                "name": "iaxX0"
+              }
+            ],
+            "grouped_engines": [
+              { "dev": "engineX.0", "group_id": 0 },
+              { "dev": "engineX.1", "group_id": 0 },
+              { "dev": "engineX.2", "group_id": 0 },
+              { "dev": "engineX.3", "group_id": 0 },
+              { "dev": "engineX.4", "group_id": 0 },
+              { "dev": "engineX.5", "group_id": 0 },
+              { "dev": "engineX.6", "group_id": 0 },
+              { "dev": "engineX.7", "group_id": 0 }
+            ]
+          }
+        ]
+      }
+    ]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: intel-iaa-plugin
+  name: intel-iaa-plugin
+  namespace: accel-device-plugins
+spec:
+  selector:
+    matchLabels:
+      app: intel-iaa-plugin
+  template:
+    metadata:
+      labels:
+        app: intel-iaa-plugin
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        accel-device-plugins/iaa: "true"
+      initContainers:
+      - name: intel-iaa-initcontainer
+        image: intel/intel-idxd-config-initcontainer:0.37.1
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: DEVICE_TYPE
+          value: iaa
+        securityContext:
+          privileged: true
+          readOnlyRootFilesystem: true
+          seLinuxOptions:
+            type: container_device_plugin_init_t
+        volumeMounts:
+        - mountPath: /sys/bus/dsa
+          name: sys-bus-dsa
+        - mountPath: /sys/devices
+          name: sys-devices
+        - mountPath: /idxd-init/conf
+          name: intel-iaa-config-volume
+        - mountPath: /idxd-init/scratch
+          name: scratch
+      containers:
+      - name: intel-iaa-plugin
+        image: intel/intel-iaa-plugin:0.37.1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          limits:
+            cpu: 120m
+            memory: 65Mi
+          requests:
+            cpu: 60m
+            memory: 25Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          seLinuxOptions:
+            type: container_device_plugin_t
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /dev/iax
+          name: devfs
+          readOnly: true
+        - mountPath: /dev/char
+          name: chardevs
+          readOnly: true
+        - mountPath: /sys/bus/dsa/devices
+          name: sysfs
+          readOnly: true
+        - mountPath: /var/lib/kubelet/device-plugins
+          name: kubeletsockets
+      volumes:
+      - hostPath:
+          path: /sys/bus/dsa
+        name: sys-bus-dsa
+      - hostPath:
+          path: /sys/devices
+        name: sys-devices
+      - configMap:
+          name: intel-iaa-config
+        name: intel-iaa-config-volume
+      - emptyDir: {}
+        name: scratch
+      - hostPath:
+          path: /dev/iax
+        name: devfs
+      - hostPath:
+          path: /dev/char
+        name: chardevs
+      - hostPath:
+          path: /sys/bus/dsa/devices
+        name: sysfs
+      - hostPath:
+          path: /var/lib/kubelet/device-plugins
+        name: kubeletsockets
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate

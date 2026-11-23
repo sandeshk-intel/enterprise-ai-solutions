@@ -1,0 +1,28 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Device plugins for RDMA NICs (rdma/hca) and Intel QAT (qat.intel.com/dc) and IAA
+# (iaa.intel.com/wq-user-shared), each installed on the Kubernetes nodes listed for it. Opt-in:
+# with every list empty the component is off. A remote KV-cache pool (inference: vllm-cuda-kvshrink,
+# docs/customize/kv-offload.md) needs rdma on its GPU and pool nodes, and qat/iaa on the pool node.
+# Nodes leaving a list are unlabelled, so the plugin leaves them too.
+accel_device_plugins_nodes:
+  rdma: []
+  qat: []
+  iaa: []
+
+# RDMA NICs the rdma plugin shares (k8s-rdma-shared-dev-plugin selectors): every Mellanox/NVIDIA NIC.
+# Add ifNames: [<netdev>, ...] to share only those.
+accel_device_plugins_rdma_selectors:
+  vendors: ["15b3"]
+
+# Per plugin: vendored manifest (files/), its DaemonSet and the resource it advertises.
+accel_device_plugins:
+  rdma: {manifest: rdma-shared-dev-plugin-v1.5.4.yaml, daemonset: rdma-shared-dp-ds, resource: rdma/hca}
+  qat: {manifest: intel-qat-plugin-v0.37.1.yaml, daemonset: intel-qat-plugin, resource: qat.intel.com/dc}
+  iaa: {manifest: intel-iaa-plugin-v0.37.1.yaml, daemonset: intel-iaa-plugin, resource: iaa.intel.com/wq-user-shared}
+
+accel_device_plugins_namespace: accel-device-plugins
+# Retries x 10s: a plugin rolling out and its nodes advertising the resource.
+accel_device_plugins_ready_retries: 30

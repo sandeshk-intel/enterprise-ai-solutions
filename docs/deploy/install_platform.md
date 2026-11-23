@@ -36,6 +36,30 @@ only on those nodes (in its own `intel-gpu-plugin` namespace, tolerating their t
 - No driver install is involved: the `xe` kernel driver is in the Linux kernel, and the
   userspace stack ships in the model runtime's image.
 
+**RDMA NICs, Intel QAT and IAA (opt-in).** The `accel_device_plugins` platform component installs
+the [k8s-rdma-shared-dev-plugin](https://github.com/Mellanox/k8s-rdma-shared-dev-plugin) (v1.5.4,
+`rdma/hca`) and the Intel QAT and IAA device plugins (v0.37.1, `qat.intel.com/dc`,
+`iaa.intel.com/wq-user-shared`), each on the nodes you list. A remote KV-cache pool (the inference
+layer's `vllm-cuda-kvshrink` runtime, `docs/customize/kv-offload.md` there) needs RDMA on its GPU and pool
+nodes, and QAT/IAA on the pool node:
+
+```yaml
+accel_device_plugins_nodes:
+  rdma: [gpu-node-1, pool-node-1]
+  qat: [pool-node-1]
+  iaa: [pool-node-1]
+```
+
+- It labels exactly the listed nodes (`accel-device-plugins/<plugin>=true`), so a node removed from a list
+  loses its plugin on the next install, and waits until each node advertises its resource.
+- QAT: `vfio-pci` is loaded and persisted on the listed inventory hosts; the init container gives every QAT
+  PF to compression (`ServicesEnabled=dc`, crypto services dropped) and binds its VFs to vfio-pci.
+- IAA: the init container sets one shared user work queue per device, which takes the devices from the
+  kernel's `iaa_crypto` (zswap).
+- RDMA: every Mellanox/NVIDIA NIC is shared; `accel_device_plugins_rdma_selectors` narrows it (`ifNames`).
+  The OFED/DOCA stack on the hosts is a prerequisite.
+- Teardown removes the plugins and labels; the QAT and IAA device configuration stays until a reboot.
+
 ---
 
 ## Before You Start

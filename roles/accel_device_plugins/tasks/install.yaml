@@ -1,0 +1,68 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+- name: "accel_device_plugins | Install"
+  environment:
+    KUBECONFIG: "{{ kubernetes_kubeconfig }}"
+  vars:
+    _accel_qat_nodes: "{{ accel_device_plugins_nodes.qat | default([]) }}"
+  block:
+    - name: "accel_device_plugins | Apply the namespace"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ item }}"
+      loop: "{{ lookup('ansible.builtin.file', 'namespace.yaml') | from_yaml_all | select | list }}"
+      loop_control:
+        label: "{{ item.kind }}/{{ item.metadata.name }}"
+
+    # The QAT init container binds the VFs to vfio-pci, through which the pods open them.
+    - name: "accel_device_plugins | Load vfio-pci on the QAT nodes"
+      community.general.modprobe:
+        name: vfio-pci
+        state: present
+      become: true
+      delegate_to: "{{ item }}"
+      loop: "{{ _accel_qat_nodes | intersect(groups['all']) }}"
+
+    - name: "accel_device_plugins | Load vfio-pci at boot"
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/vfio-pci.conf
+        content: "vfio-pci\n"
+        mode: "0644"
+      become: true
+      delegate_to: "{{ item }}"
+      loop: "{{ _accel_qat_nodes | intersect(groups['all']) }}"
+
+    - name: "accel_device_plugins | Warn — QAT nodes outside the inventory"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ _accel_qat_nodes | difference(groups['all']) | join(', ') }} are not inventory hosts, so
+          vfio-pci cannot be loaded there: run `modprobe vfio-pci` on them, or the QAT plugin advertises no VF.
+      when: _accel_qat_nodes | difference(groups['all']) | length > 0
+
+    - name: "accel_device_plugins | Render the RDMA plugin's device selection"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: rdma-devices
+            namespace: "{{ accel_device_plugins_namespace }}"
+          data:
+            config.json: >-
+              {{ {'periodicUpdateInterval': 300,
+                  'configList': [{'resourcePrefix': 'rdma', 'resourceName': 'hca', 'rdmaHcaMax': 63,
+                                  'selectors': accel_device_plugins_rdma_selectors}]} | to_json }}
+      when: accel_device_plugins_nodes.rdma | default([]) | length > 0
+
+    - name: "accel_device_plugins | Install each plugin on its nodes"
+      ansible.builtin.include_tasks: plugin.yaml
+      loop: "{{ accel_device_plugins | dict2items }}"
+      loop_control:
+        loop_var: _accel_plugin
+        label: "{{ _accel_plugin.key }}"
+      vars:
+        _accel_label: "accel-device-plugins/{{ _accel_plugin.key }}"
+        _accel_nodes: "{{ accel_device_plugins_nodes[_accel_plugin.key] | default([]) }}"

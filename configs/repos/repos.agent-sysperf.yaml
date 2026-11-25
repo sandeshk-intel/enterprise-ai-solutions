@@ -1,0 +1,38 @@
+---
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+# =============================================================================
+# Layer manifest — agent-sysperf
+# =============================================================================
+# AgentSysPerf on the Intel Agent Toolkit: the inference and agent-toolkit layers it
+# measures, then AgentSysPerf itself, whose Toolkit Manager wiring (components.yaml,
+# config.yaml, roles/) is under deploy/toolkit. Dependencies first.
+#
+# Field reference: docs/reference/adding-solutions.md
+# =============================================================================
+
+repos:
+  - layer: "inference"
+    url: "https://github.com/sandeshk-intel/enterprise-inference"
+    dest: "enterprise.ai-inference"
+    rev: "main"
+    deployment_subdir: ""
+    config_dir: ""
+    default_flavour: ""
+    model_catalog: "model_manager/models.yaml"
+
+  - layer: "agent-toolkit"
+    url: "https://github.com/sandeshk-intel/enterprise-agent-toolkit"
+    dest: "enterprise.agent-toolkit"
+    rev: "main"
+    deployment_subdir: ""
+    config_dir: ""
+    default_flavour: ""
+
+  - layer: "agent-sysperf"
+    url: "https://github.com/sandeshk-intel/applications.ai.enterprise.agentsysperf"
+    dest: "enterprise.agent-sysperf"
+    rev: "feature/sandeshk/asp_2.1"
+    deployment_subdir: "deploy/toolkit"
+    config_dir: ""
+    default_flavour: ""

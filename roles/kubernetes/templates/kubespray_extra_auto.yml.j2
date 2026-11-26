@@ -15,6 +15,25 @@ dns_min_replicas: "{% raw %}{{ [2, groups['k8s_cluster'] | length] | min }}{% en
 kube_proxy_mode: "{{ kubernetes_kube_proxy_mode }}"
 # In-cluster image registry; the agent toolkit turns it on
 registry_enabled: {{ kubernetes_registry_enabled | default(false) | bool | lower }}
+{% if kubernetes_registry_enabled | default(false) | bool %}
+registry_storage_class: "{{ kubernetes_registry_storage_class }}"
+registry_disk_size: "{{ kubernetes_registry_disk_size }}"
+registry_service_cluster_ip: "{{ kubernetes_registry_cluster_ip | trim }}"
+# Nodes pull from it over plain HTTP: containerd's certs.d/<ip>:5000/hosts.toml. The list
+# replaces Kubespray's default, so its docker.io entry is kept.
+containerd_registries_mirrors:
+  - prefix: docker.io
+    mirrors:
+      - host: https://registry-1.docker.io
+        capabilities: ["pull", "resolve"]
+        skip_verify: false
+  - prefix: "{{ kubernetes_registry_cluster_ip | trim }}:5000"
+    server: "http://{{ kubernetes_registry_cluster_ip | trim }}:5000"
+    mirrors:
+      - host: "http://{{ kubernetes_registry_cluster_ip | trim }}:5000"
+        capabilities: ["pull", "resolve", "push"]
+        skip_verify: true
+{% endif %}
 {% if not (_k8s_needs_ssh | bool) %}
 # localhost mode: keep kubespray binaries off the shared /usr/local/bin so
 # reset.yml never deletes the operator's configure-installed kubectl/helm.

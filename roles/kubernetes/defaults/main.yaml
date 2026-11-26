@@ -132,6 +132,16 @@ kubernetes_disable_swap: true
 kubernetes_disable_firewall: false
 kubernetes_load_kernel_modules: true
 kubernetes_registry_enabled: false
+# The registry's volume (empty = emptyDir: every image is lost when its pod restarts) and size.
+kubernetes_registry_storage_class: "local-path"
+kubernetes_registry_disk_size: "20Gi"
+# A fixed ClusterIP, because nodes pull through containerd on the host, which cannot resolve
+# cluster DNS names: images are named <ip>:5000/<name>. Default: the 250th address of the
+# service range, in the band Kubernetes keeps for static assignment.
+kubernetes_registry_cluster_ip: >-
+  {%- set o = kubernetes_service_cidr.split('/')[0].split('.') | map('int') | list -%}
+  {%- set n = o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] + 250 -%}
+  {{ [n // 16777216, n // 65536 % 256, n // 256 % 256, n % 256] | join('.') }}
 
 # --- Node preflight (fresh installs only; docs/getting-started/prerequisites.md) ---
 kubernetes_node_preflight: true

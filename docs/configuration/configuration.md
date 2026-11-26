@@ -530,7 +530,9 @@ Kata switches in `env/<name>/global_config.yaml`, where `init` puts them (a valu
 |---|---|---|
 | `kata_containers_enabled` | `false` | Install Kata Containers (the `kata_containers` infrastructure component) with the upstream kata-deploy chart |
 | `kata_runtime` | `kata-fc` | `kata-fc` (Firecracker), `kata-qemu` or `both`: which runtimes kata-deploy sets up |
-| `kubernetes_registry_enabled` | `false` | Kubespray's in-cluster image registry (`kube-system`, port 5000). `config.agent-toolkit.yaml` turns it on; it only applies when Kubespray builds the cluster, so run `init agent-toolkit` before the first install |
+| `kubernetes_registry_enabled` | `false` | Kubespray's in-cluster image registry (`kube-system`, port 5000). `config.agent-toolkit.yaml` turns it on; it only applies when Kubespray builds the cluster, so run `init agent-toolkit` before the first install. Nodes pull from it over plain HTTP as `<kubernetes_registry_cluster_ip>:5000/<image>` |
+| `kubernetes_registry_cluster_ip` | 250th address of `kubernetes_service_cidr` | The registry Service's fixed ClusterIP, the host part of its image names: nodes pull through containerd on the host, which cannot resolve cluster DNS names |
+| `kubernetes_registry_storage_class`, `kubernetes_registry_disk_size` | `local-path`, `20Gi` | The registry's volume. Empty class = emptyDir, which loses every image when the registry pod restarts |
 
 Before anything is installed, every node in the inventory is checked and prepared:
 
